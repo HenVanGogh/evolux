@@ -1,17 +1,24 @@
-"""Shared fixtures for all tests."""
+"""Shared pytest fixtures."""
 
-import numpy as np
+from __future__ import annotations
+
 import pytest
-import yaml
-from pathlib import Path
+import torch
+
+from evolux.core.device import get_device
+from evolux.core.rng import RNG
 
 
 @pytest.fixture
-def cfg():
-    base = Path(__file__).parent.parent / "config" / "default.yaml"
-    return yaml.safe_load(base.read_text())
+def cpu_device() -> torch.device:
+    return torch.device("cpu")
 
 
 @pytest.fixture
-def rng():
-    return np.random.default_rng(0)
+def rng() -> RNG:
+    return RNG(seed=0)
+
+
+@pytest.fixture
+def auto_device() -> torch.device:
+    return get_device("auto")

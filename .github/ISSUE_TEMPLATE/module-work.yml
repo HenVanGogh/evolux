@@ -1,0 +1,47 @@
+name: Module work
+description: Implement / extend a single module per its SPEC.md
+title: "[<module>] <one-line task>"
+labels: ["module-work"]
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: e.g. `brain`, `memory`, `evolution`
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Roadmap phase
+      options: ["0 — foundation", "1 — single-creature loop", "2 — modern brain & memory", "3 — evolution & complex env", "4 — distributed/viz/polish"]
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Quote the relevant rows from the module's SPEC.md (Files in scope, Acceptance tests).
+      placeholder: |
+        From src/evolux/brain/SPEC.md:
+        - File: transformer.py — class TransformerBrain
+        - Acceptance: forward output shape, state recurrence, gradient flow
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Anything you must NOT touch (other modules, Protocol changes, etc.)
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / pointers / references
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Quality gates
+      options:
+        - label: I read AGENTS.md and the module SPEC.md
+        - label: I will only edit files in scope
+        - label: I will add tests under tests/unit/<module>/

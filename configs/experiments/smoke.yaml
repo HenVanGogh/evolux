@@ -1,0 +1,11 @@
+# Smoke-test config: smallest viable run for CI.
+extends: ../base.yaml
+
+simulation:
+  batch_size: 8
+  max_generations: 2
+  steps_per_generation: 16
+  log_interval: 1
+
+population:
+  size: 8

@@ -1,0 +1,48 @@
+line-length = 100
+target-version = "py311"
+extend-exclude = ["prototypes", "build", "dist"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "PIE", # flake8-pie
+    "PL",  # pylint
+    "RUF", # ruff-specific
+    "SIM", # flake8-simplify
+    "T20", # flake8-print  → forbids print()
+    "ANN", # flake8-annotations (public APIs typed)
+    "ASYNC",
+    "S",   # bandit (security)
+    "BLE", # blind-except
+]
+
+ignore = [
+    "ANN401",            # allow Any in narrow places
+    "PLR0913",           # many args sometimes needed for ML configs
+    "PLR2004",           # magic numbers fine in ML
+    "S101",              # asserts ok in scientific code
+    "N812",              # allow `import torch.nn.functional as F`
+    "N803", "N806",      # allow math-style names (B, T, D, X, W)
+    "PLC0415",           # lazy imports legit for CLI / optional deps
+    "B008",              # typer.Argument(...) in defaults is idiomatic
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["ANN", "S", "PLR", "BLE", "B017", "F841"]
+"scripts/**" = ["T20", "ANN"]
+"docs/**" = ["ALL"]
+
+[lint.isort]
+known-first-party = ["evolux"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

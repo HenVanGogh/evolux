@@ -1,0 +1,19 @@
+# Base configuration — every experiment YAML can `extends: base.yaml` and
+# override only the fields it cares about. See evolux.core.config.EvoluxConfig.
+
+simulation:
+  seed: 42
+  device: auto
+  batch_size: 64
+  max_generations: 100
+  steps_per_generation: 200
+  log_interval: 10
+  checkpoint_interval: 25
+  output_dir: runs
+
+population:
+  size: 64
+
+# Per-module config blocks are namespaced under `modules.<name>`.
+# Each module SPEC describes its expected config keys.
+modules: {}

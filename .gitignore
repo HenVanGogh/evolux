@@ -1,0 +1,54 @@
+# Byte-compiled / optimised
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.envrc
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.coverage
+.coverage.*
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+
+# Experiment artefacts
+runs/
+checkpoints/
+wandb/
+outputs/
+logs/
+*.ckpt
+*.pt
+*.npz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Web dashboard build
+src/evolux/viz/web/dist/
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints/
