@@ -1,0 +1,30 @@
+# Foraging experiment — creatures must find and collect food efficiently
+# Inherits defaults; only overrides are listed here.
+
+simulation:
+  steps_per_generation: 800
+  max_generations: 2000
+
+world:
+  width: 128
+  height: 128
+
+environment:
+  resources:
+    food_density: 0.03
+    food_respawn_rate: 0.001
+
+brain:
+  min_hidden: 8
+  max_hidden: 128
+
+evolution:
+  directed:
+    goal_field: energy_collected
+
+fitness:
+  objectives:
+    - name: energy_collected
+      weight: 1.0
+    - name: survival
+      weight: 0.4

@@ -1,0 +1,106 @@
+# ── Simulation ─────────────────────────────────────────────
+simulation:
+  steps_per_generation: 500
+  max_generations: 1000
+  seed: 42
+  render: false
+  render_fps: 30
+  log_interval: 10        # generations between stat snapshots
+  checkpoint_interval: 50 # generations between full saves
+
+# ── Population ─────────────────────────────────────────────
+population:
+  size: 100
+  initial_species: 1
+
+# ── World ──────────────────────────────────────────────────
+world:
+  type: grid              # grid | continuous
+  width: 64
+  height: 64
+  wrap: true              # toroidal topology
+
+# ── Environment ────────────────────────────────────────────
+environment:
+  resources:
+    food_density: 0.05    # fraction of cells with food initially
+    food_respawn_rate: 0.002
+    food_energy: 10.0
+  hazards:
+    enabled: false
+
+# ── Creature ───────────────────────────────────────────────
+creature:
+  initial_energy: 50.0
+  metabolism_rate: 0.1    # energy per step
+  reproduction_threshold: 80.0
+  max_age: 1000           # steps
+
+# ── Brain ──────────────────────────────────────────────────
+brain:
+  type: dynamic_nn        # dynamic_nn | lstm | neat
+  min_hidden: 4
+  max_hidden: 64
+  activation_default: tanh
+  recurrent: true
+
+  memory:
+    working_size: 8       # fast activation buffer slots
+    episodic_capacity: 32 # key-value pairs
+    episodic_key_dim: 4
+    episodic_val_dim: 8
+    hebbian_enabled: true
+    hebbian_lr: 0.01
+
+# ── Genome ─────────────────────────────────────────────────
+genome:
+  encoding: direct        # direct | indirect (CPPN)
+  weight_range: [-3.0, 3.0]
+
+# ── Evolution ──────────────────────────────────────────────
+evolution:
+  strategy: directed_ga   # ga | neat | map_elites | directed_ga
+  selection: tournament   # tournament | roulette | lexicase
+  tournament_k: 5
+  elitism: 2              # number of elites carried unchanged
+
+  operators:
+    weight_mutation_rate: 0.8
+    weight_mutation_sigma: 0.2
+    weight_perturbation_rate: 0.9  # perturb vs re-init
+    add_node_rate: 0.03
+    delete_node_rate: 0.01
+    add_connection_rate: 0.05
+    delete_connection_rate: 0.02
+    crossover_rate: 0.75
+
+  # Directed evolution parameters
+  directed:
+    enabled: true
+    gradient_weight: 0.3    # blend between gradient and fitness signal
+    novelty_weight: 0.2
+    novelty_k: 15           # neighbours for novelty estimation
+    goal_field: energy      # energy | age | distance_to_goal | custom
+
+  speciation:
+    enabled: true
+    compatibility_threshold: 3.0
+    disjoint_coeff: 1.0
+    weight_coeff: 0.4
+
+# ── Fitness ────────────────────────────────────────────────
+fitness:
+  objectives:
+    - name: survival
+      weight: 1.0
+    - name: energy_collected
+      weight: 0.5
+    - name: offspring_count
+      weight: 0.3
+  normalize: true
+
+# ── Logging / Output ───────────────────────────────────────
+output:
+  dir: runs/
+  save_best_genome: true
+  save_population_stats: true
