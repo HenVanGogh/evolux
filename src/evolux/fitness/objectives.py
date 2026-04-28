@@ -89,7 +89,11 @@ class DistanceTravelled:
                 "DistanceTravelled: key '%s' not found in trajectory.aux; returning zeros.",
                 self._positions_key,
             )
-            return torch.zeros(trajectory.batch_size, dtype=torch.float32)
+            return torch.zeros(
+                trajectory.batch_size,
+                dtype=torch.float32,
+                device=trajectory.dones.device,
+            )
 
         positions = trajectory.aux[self._positions_key]  # (B, T, 2)
         deltas = positions[:, 1:] - positions[:, :-1]  # (B, T-1, 2)
