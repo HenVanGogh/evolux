@@ -161,17 +161,14 @@ def test_step_generation_resets_behaviour() -> None:
 
 
 def test_step_generation_all_elites_no_offspring() -> None:
-    """If n_elites == P, no offspring is created and population is unchanged."""
+    """If n_elites == P, no offspring is created and all genomes survive."""
     pop = make_population(4)
-    original_ids = [id(g) for g in pop.genomes]
+    original_ids = {id(g) for g in pop.genomes}
     t = Tournament(k=2, n_elites=4)
     op = DirectOperator(sigma=0.05)
     pop.step_generation(t, op, RNG(0).split("step"))
     assert len(pop.genomes) == 4
-    # All genomes are elites — same objects
-    assert [id(g) for g in pop.genomes[:4]] == original_ids or len(
-        {id(g) for g in pop.genomes} & set(original_ids)
-    ) == 4
+    assert {id(g) for g in pop.genomes} == original_ids
 
 
 def test_step_generation_empty_population_is_noop() -> None:
