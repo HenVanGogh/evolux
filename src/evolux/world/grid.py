@@ -111,7 +111,7 @@ class GridWorld:
         self.step_energy_cost: float = step_energy_cost
 
         self._rng: RNG = rng if rng is not None else RNG(seed=0)
-        self._physics: DiscretePhysics = DiscretePhysics(height, width)
+        self._physics: DiscretePhysics = DiscretePhysics(world_h=height, world_w=width)
 
         # Declared observation spec
         self.obs_spec: ObsSpec = ObsSpec(
@@ -121,10 +121,11 @@ class GridWorld:
             }
         )
 
-        # Internal state tensors
+        # Internal state tensors.
+        # Note: positions and headings are float32 to match DiscretePhysics output.
         self._world: Tensor = torch.zeros(batch_size, height, width, N_CHANNELS, device=self.device)
-        self._positions: Tensor = torch.zeros(batch_size, 2, dtype=torch.long, device=self.device)
-        self._headings: Tensor = torch.zeros(batch_size, dtype=torch.long, device=self.device)
+        self._positions: Tensor = torch.zeros(batch_size, 2, device=self.device)  # float32
+        self._headings: Tensor = torch.zeros(batch_size, device=self.device)  # float32 {0,1,2,3}
         self._energy: Tensor = torch.full((batch_size,), initial_energy, device=self.device)
         self._hunger: Tensor = torch.zeros(batch_size, device=self.device)
         self._last_action: Tensor = torch.zeros(batch_size, device=self.device)
@@ -182,8 +183,8 @@ class GridWorld:
 
         # Apply to the batch
         self._world[indices] = new_world
-        self._positions[indices] = torch.stack([row_rand, col_rand], dim=1)
-        self._headings[indices] = head_rand
+        self._positions[indices] = torch.stack([row_rand, col_rand], dim=1).float()
+        self._headings[indices] = head_rand.float()
         self._energy[indices] = self.initial_energy
         self._hunger[indices] = 0.0
         self._last_action[indices] = 0.0
@@ -241,15 +242,19 @@ class GridWorld:
             self._world, self._positions, self._headings, action
         )
 
-        # Update occupancy channel
+        # Update occupancy channel — positions are float, cast to long for indexing
         b_idx = torch.arange(B, device=device)
-        self._world[b_idx, self._positions[:, 0], self._positions[:, 1], CHANNEL_OCCUPANCY] = 0.0
-        self._world[b_idx, new_pos[:, 0], new_pos[:, 1], CHANNEL_OCCUPANCY] = 1.0
+        old_row = self._positions[:, 0].long()
+        old_col = self._positions[:, 1].long()
+        new_row = new_pos[:, 0].long()
+        new_col = new_pos[:, 1].long()
+        self._world[b_idx, old_row, old_col, CHANNEL_OCCUPANCY] = 0.0
+        self._world[b_idx, new_row, new_col, CHANNEL_OCCUPANCY] = 1.0
 
         # Eat food at new position
-        food_at_pos = self._world[b_idx, new_pos[:, 0], new_pos[:, 1], CHANNEL_FOOD]  # (B,)
+        food_at_pos = self._world[b_idx, new_row, new_col, CHANNEL_FOOD]  # (B,)
         ate_food = food_at_pos > 0.5  # (B,) bool
-        self._world[b_idx, new_pos[:, 0], new_pos[:, 1], CHANNEL_FOOD] = torch.where(
+        self._world[b_idx, new_row, new_col, CHANNEL_FOOD] = torch.where(
             ate_food, torch.zeros(B, device=device), food_at_pos
         )
 

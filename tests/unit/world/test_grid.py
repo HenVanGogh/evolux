@@ -328,8 +328,8 @@ def test_collision_keeps_agent_in_place() -> None:
     B = 1
     world = make_world(batch_size=B, height=4, width=4)
     # Force position to top-left corner and heading North
-    world._positions = torch.zeros(B, 2, dtype=torch.long)
-    world._headings = torch.zeros(B, dtype=torch.long)  # North
+    world._positions = torch.zeros(B, 2)
+    world._headings = torch.zeros(B)  # North
 
     pos_before = world._positions.clone()
     action = torch.tensor([[1.0, 0.0]])  # move forward (North) — blocked by boundary
@@ -353,8 +353,8 @@ def test_turning_changes_heading() -> None:
 def test_extract_local_crop_shape() -> None:
     B, H, W, C, k = 4, 8, 8, 4, 3
     world = torch.zeros(B, H, W, C)
-    positions = torch.zeros(B, 2, dtype=torch.long)
-    headings = torch.zeros(B, dtype=torch.long)
+    positions = torch.zeros(B, 2)
+    headings = torch.zeros(B)
     crop = extract_local_crop(world, positions, headings, crop_size=k)
     assert crop.shape == (B, C, k, k)
 
@@ -363,8 +363,8 @@ def test_extract_local_crop_wall_padding() -> None:
     """Positions at corner should see wall padding in the crop."""
     B, H, W, C, k = 1, 4, 4, 4, 3
     world = torch.zeros(B, H, W, C)
-    positions = torch.zeros(B, 2, dtype=torch.long)  # top-left
-    headings = torch.zeros(B, dtype=torch.long)
+    positions = torch.zeros(B, 2)  # top-left
+    headings = torch.zeros(B)
     crop = extract_local_crop(world, positions, headings, crop_size=k)
     # Top-left corner: top row and left column of crop should be wall
     # Wall channel is 0; padding should set it to 1.0
@@ -375,8 +375,8 @@ def test_extract_local_crop_wall_padding() -> None:
 def test_build_obs_keys() -> None:
     B, H, W, C, k = 2, 8, 8, 4, 3
     world = torch.zeros(B, H, W, C)
-    positions = torch.ones(B, 2, dtype=torch.long)
-    headings = torch.zeros(B, dtype=torch.long)
+    positions = torch.ones(B, 2)
+    headings = torch.zeros(B)
     energy = torch.ones(B)
     hunger = torch.zeros(B)
     last_action = torch.zeros(B)
@@ -388,8 +388,8 @@ def test_build_obs_keys() -> None:
 def test_build_obs_shapes() -> None:
     B, H, W, C, k = 3, 8, 8, 4, 5
     world = torch.zeros(B, H, W, C)
-    positions = torch.ones(B, 2, dtype=torch.long) * 3
-    headings = torch.zeros(B, dtype=torch.long)
+    positions = torch.ones(B, 2) * 3
+    headings = torch.zeros(B)
     energy = torch.rand(B)
     hunger = torch.rand(B)
     last_action = torch.rand(B)

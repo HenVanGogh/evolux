@@ -62,27 +62,28 @@ def extract_local_crop(
     padded[:, :, pad : pad + H, pad : pad + W] = world_c
 
     # ---- Extract k x k crops ------------------------------------------------
-    # positions[:, 0] is row (with pad offset applied below)
-    rows = positions[:, 0]  # (B,)
-    cols = positions[:, 1]  # (B,)
+    # positions may be float (from DiscretePhysics); cast to long for indexing.
+    rows = positions[:, 0].long()  # (B,)
+    cols = positions[:, 1].long()  # (B,)
 
     crops = torch.stack(
         [padded[b, :, rows[b] : rows[b] + k, cols[b] : cols[b] + k] for b in range(B)],
         dim=0,
     )  # (B, C, k, k)
 
-    # ── Rotate to agent frame ─────────────────────────────────────────────────
-    # heading 0 (N): no rotation — "up" is already north
-    # heading 1 (E): rotate 90° CW → 3 * 90° CCW
-    # heading 2 (S): rotate 180° → 2 * 90° CCW
-    # heading 3 (W): rotate 90° CCW → 1 * 90° CCW
-    # torch.rot90(k=n) rotates n * 90° CCW.
+    # ---- Rotate to agent frame -----------------------------------------------
+    # heading 0 (N): no rotation -- "up" is already north
+    # heading 1 (E): rotate 90 deg CW  -> 3 * 90 deg CCW
+    # heading 2 (S): rotate 180 deg    -> 2 * 90 deg CCW
+    # heading 3 (W): rotate 90 deg CCW -> 1 * 90 deg CCW
+    # torch.rot90(k=n) rotates n * 90 deg CCW.
+    # headings may be float {0,1,2,3} from DiscretePhysics; cast to int for comparison.
     _heading_to_rot90 = [0, 3, 2, 1]
     rotated = crops.clone()
     for h_val, n_rot in enumerate(_heading_to_rot90):
         if n_rot == 0:
             continue
-        mask = headings == h_val
+        mask = headings.long() == h_val
         if mask.any():
             rotated[mask] = torch.rot90(crops[mask], n_rot, dims=(-2, -1))
 

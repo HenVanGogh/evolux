@@ -1,22 +1,17 @@
-"""Discrete grid-cell physics for Phase-1 worlds.
+"""Discrete grid-cell physics — movement, occupancy, collision detection.
 
-Implements :class:`DiscretePhysics`, which handles per-step movement,
-collision detection, and occupancy updates for a batch of ``B`` agents
-on a ``(B, H, W, C)`` world tensor.
+``DiscretePhysics`` operates on a ``(B, H, W, C)`` world tensor and
+``(B, 2)`` integer agent positions (row, col).  It is the Phase-1 physics
+back-end used by ``GridWorld``.
 
-Channel layout (must match ``world.grid.CHANNEL_*`` constants):
+Headings are encoded as floats in ``{0.0, 1.0, 2.0, 3.0}`` where
 
-    0 -- wall (1 = blocked)
-    1 -- food (1 = food present)
-    2 -- agent occupancy (1 = agent present)
-    3 -- hazard (1 = hazard present)
+    0 -> North (row - 1)
+    1 -> East  (col + 1)
+    2 -> South (row + 1)
+    3 -> West  (col - 1)
 
-Heading encoding (integers 0-3):
-
-    0 = North  (drow = -1, dcol =  0)
-    1 = East   (drow =  0, dcol = +1)
-    2 = South  (drow = +1, dcol =  0)
-    3 = West   (drow =  0, dcol = -1)
+This matches the four-directional convention used in the morphology module.
 """
 
 from __future__ import annotations
@@ -26,33 +21,44 @@ from torch import Tensor
 
 from evolux.physics.energy import compute_action_cost
 
-# Heading → (Δrow, Δcol) mapping, indexed 0..3
-_ROW_DELTA = torch.tensor([-1, 0, 1, 0], dtype=torch.long)
-_COL_DELTA = torch.tensor([0, 1, 0, -1], dtype=torch.long)
-
-# Channel indices — must match GridWorld.CHANNEL_*
-_WALL_CH: int = 0
+# Row / column deltas indexed by heading 0-3
+_ROW_DELTA = torch.tensor([-1, 0, 1, 0], dtype=torch.long)  # indexed by heading: 0=N,1=E,2=S,3=W
+_COL_DELTA = torch.tensor([0, 1, 0, -1], dtype=torch.long)  # indexed by heading: 0=N,1=E,2=S,3=W
 
 
 class DiscretePhysics:
-    """Batched grid-cell physics for discrete worlds.
-
-    All operations are fully vectorised over the batch dimension ``B``.
-    There are no Python-level loops over individual agents.
+    """Vectorised discrete-grid physics for *B* parallel environments.
 
     Parameters
     ----------
-    height:
-        Grid height in cells.
-    width:
-        Grid width in cells.
+    world_h:
+        Grid height (number of rows).
+    world_w:
+        Grid width (number of columns).
+    wall_channel:
+        Index of the wall channel in the ``C`` dimension of the world tensor.
+        Cells with ``world[b, r, c, wall_channel] > 0.5`` are solid walls.
+    wrap:
+        If ``True``, positions wrap at the grid boundary (toroidal topology).
+        If ``False`` (default), movement is clamped to ``[0, H-1] x [0, W-1]``
+        and out-of-bounds moves count as collisions.
     """
 
-    def __init__(self, height: int, width: int) -> None:
-        self.height: int = height
-        self.width: int = width
-
-    # ── Public interface ──────────────────────────────────────────────────────
+    def __init__(
+        self,
+        world_h: int,
+        world_w: int,
+        wall_channel: int = 0,
+        wrap: bool = False,
+    ) -> None:
+        if world_h <= 0 or world_w <= 0:
+            raise ValueError(f"world_h and world_w must be > 0, got {world_h}x{world_w}.")
+        if wall_channel < 0:
+            raise ValueError(f"wall_channel must be >= 0, got {wall_channel}.")
+        self.world_h: int = world_h
+        self.world_w: int = world_w
+        self.wall_channel: int = wall_channel
+        self.wrap: bool = wrap
 
     def step(
         self,
@@ -61,69 +67,92 @@ class DiscretePhysics:
         headings: Tensor,
         actions: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        """Advance all agents by one discrete step.
+        """Advance one physics tick for all creatures in the batch.
 
         Parameters
         ----------
         world:
-            ``(B, H, W, C)`` float32 world tensor.  Must already include
-            the occupancy channel so collision checks are consistent.
+            ``(B, H, W, C)`` float tensor encoding grid channels.
         positions:
-            ``(B, 2)`` int64 agent grid positions ``[row, col]``.
+            ``(B, 2)`` float tensor of current ``(row, col)`` positions.
         headings:
-            ``(B,)`` int64 agent headings (0 = N, 1 = E, 2 = S, 3 = W).
+            ``(B,)`` float tensor of current headings in ``{0, 1, 2, 3}``.
         actions:
-            ``(B, A)`` float32 action tensor.
-            ``actions[:, 0]`` -- forward impulse (> 0.5 moves agent).
-            ``actions[:, 1]`` -- turn signal (> 0.5 right, < -0.5 left).
+            ``(B, A)`` float tensor where
+
+            * ``actions[:, 0] > 0.5`` → move forward one cell.
+            * ``actions[:, 1] > 0``   → turn right 90°.
+            * ``actions[:, 1] < 0``   → turn left 90°.
+
+            Extra action columns (A > 2) are ignored for movement but
+            included in the energy-cost sum.
 
         Returns
         -------
-        new_positions : ``(B, 2)`` int64
-        new_headings  : ``(B,)`` int64
-        collision_mask: ``(B,)`` bool -- True where agent was blocked
-        energy_cost   : ``(B,)`` float32
+        new_positions : Tensor
+            ``(B, 2)`` updated positions (float32, row/col).
+        new_headings : Tensor
+            ``(B,)`` updated headings (float32, values in ``{0, 1, 2, 3}``).
+        collision_mask : Tensor
+            ``(B,)`` bool — ``True`` where movement was blocked by a wall.
+        energy_cost : Tensor
+            ``(B,)`` float32 — sum-of-squares action cost per creature.
         """
         device = positions.device
 
-        # ---- 1. Turn ---------------------------------------------------------
-        if actions.shape[1] > 1:
-            turn_signal = actions[:, 1]
+        # ── 1. Apply turns ────────────────────────────────────────────────────
+        # Turn right when actions[:, 1] > 0; turn left when < 0.
+        turn_action = actions[:, 1]
+        turn_right = (turn_action > 0).long()
+        turn_left = (turn_action < 0).long()
+        new_headings_long = (headings.long() + turn_right - turn_left) % 4
+
+        # ── 2. Compute candidate target positions ─────────────────────────────
+        should_move = actions[:, 0] > 0.5  # (B,) bool
+
+        row_delta = _ROW_DELTA.to(device)
+        col_delta = _COL_DELTA.to(device)
+
+        dr = row_delta[new_headings_long]  # (B,)
+        dc = col_delta[new_headings_long]  # (B,)
+
+        curr_row = positions[:, 0].long()
+        curr_col = positions[:, 1].long()
+
+        target_row = curr_row + dr * should_move.long()
+        target_col = curr_col + dc * should_move.long()
+
+        # ── 3. Boundary handling ──────────────────────────────────────────────
+        if self.wrap:
+            target_row = target_row % self.world_h
+            target_col = target_col % self.world_w
         else:
-            turn_signal = torch.zeros(actions.shape[0], device=device)
-        turn_right = turn_signal > 0.5  # (B,)
-        turn_left = turn_signal < -0.5  # (B,)
-        new_headings = (headings + turn_right.long() - turn_left.long()) % 4  # (B,)
+            # Out-of-bounds → clamp and mark as collision
+            out_of_bounds = (
+                (target_row < 0)
+                | (target_row >= self.world_h)
+                | (target_col < 0)
+                | (target_col >= self.world_w)
+            )
+            target_row = target_row.clamp(0, self.world_h - 1)
+            target_col = target_col.clamp(0, self.world_w - 1)
 
-        # ── 2. Compute intended new positions ─────────────────────────────────
-        move_fwd = actions[:, 0] > 0.5  # (B,) bool
+        # ── 4. Wall collision detection ───────────────────────────────────────
+        batch_idx = torch.arange(positions.shape[0], device=device)
+        wall_at_target = world[batch_idx, target_row, target_col, self.wall_channel] > 0.5
 
-        row_d = _ROW_DELTA.to(device)[new_headings]  # (B,)
-        col_d = _COL_DELTA.to(device)[new_headings]  # (B,)
+        if not self.wrap:
+            wall_collision = (wall_at_target | out_of_bounds) & should_move
+        else:
+            wall_collision = wall_at_target & should_move
 
-        intended_row = positions[:, 0] + row_d * move_fwd.long()  # (B,)
-        intended_col = positions[:, 1] + col_d * move_fwd.long()  # (B,)
+        # Block movement for colliding agents
+        final_row = torch.where(wall_collision, curr_row, target_row)
+        final_col = torch.where(wall_collision, curr_col, target_col)
 
-        # ── 3. Clip to world boundaries ───────────────────────────────────────
-        clamped_row = intended_row.clamp(0, self.height - 1)  # (B,)
-        clamped_col = intended_col.clamp(0, self.width - 1)  # (B,)
+        new_positions = torch.stack([final_row.float(), final_col.float()], dim=1)
 
-        # Boundary collision: tried to move outside world
-        boundary_collision = (intended_row != clamped_row) | (intended_col != clamped_col)  # (B,)
+        # ── 5. Energy cost ────────────────────────────────────────────────────
+        energy_cost = compute_action_cost(actions)
 
-        # ── 4. Wall collision ─────────────────────────────────────────────────
-        B = positions.shape[0]
-        b_idx = torch.arange(B, device=device)
-        wall_at_target = world[b_idx, clamped_row, clamped_col, _WALL_CH] > 0.5  # (B,)
-
-        # ── 5. Resolve: blocked agents stay put ───────────────────────────────
-        collision_mask = (boundary_collision | wall_at_target) & move_fwd  # (B,)
-
-        new_row = torch.where(collision_mask, positions[:, 0], clamped_row)
-        new_col = torch.where(collision_mask, positions[:, 1], clamped_col)
-        new_positions = torch.stack([new_row, new_col], dim=1)  # (B, 2)
-
-        # ── 6. Energy cost ────────────────────────────────────────────────────
-        energy_cost = compute_action_cost(actions).to(dtype=torch.float32)  # (B,)
-
-        return new_positions, new_headings, collision_mask, energy_cost
+        return new_positions, new_headings_long.float(), wall_collision, energy_cost
