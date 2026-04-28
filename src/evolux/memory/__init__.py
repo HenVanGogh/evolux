@@ -14,8 +14,9 @@ from evolux.core.registry import Registry
 
 MEMORY_REGISTRY: Registry = Registry("memory")
 
-__all__ = ["MEMORY_REGISTRY", "HebbianMemory", "WorkingMemory"]
+__all__ = ["MEMORY_REGISTRY", "HebbianMemory", "SemanticMemory", "WorkingMemory"]
 
 # Import submodules last to trigger registration with MEMORY_REGISTRY.
 from evolux.memory.hebbian import HebbianMemory  # noqa: E402
+from evolux.memory.semantic import SemanticMemory  # noqa: E402
 from evolux.memory.working import WorkingMemory  # noqa: E402
