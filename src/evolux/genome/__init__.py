@@ -14,4 +14,15 @@ from evolux.core.registry import Registry
 GENOME_REGISTRY: Registry = Registry("genome")
 GENOME_OPERATOR_REGISTRY: Registry = Registry("genome_operator")
 
-__all__ = ["GENOME_OPERATOR_REGISTRY", "GENOME_REGISTRY"]
+# Register Phase-1 implementations (import after registries are created).
+from evolux.genome.direct import DirectGenome, DirectOperator  # noqa: E402
+
+GENOME_REGISTRY.add("direct", DirectGenome)
+GENOME_OPERATOR_REGISTRY.add("direct", DirectOperator)
+
+__all__ = [
+    "GENOME_OPERATOR_REGISTRY",
+    "GENOME_REGISTRY",
+    "DirectGenome",
+    "DirectOperator",
+]
