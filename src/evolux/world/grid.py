@@ -74,7 +74,9 @@ class GridWorld:
     energy_per_food:
         Energy gained when an agent eats a food cell.
     step_energy_cost:
-        Fixed energy drained every step (idle penalty).
+        Base energy drained every step. Actual cost is
+        ``step_energy_cost * (1 + action_cost)`` where
+        ``action_cost`` is the sum-of-squares of the action vector.
     rng:
         :class:`~evolux.core.rng.RNG` instance for reproducibility.
         If ``None``, a fresh RNG with seed 0 is used.
@@ -251,10 +253,14 @@ class GridWorld:
             ate_food, torch.zeros(B, device=device), food_at_pos
         )
 
-        # Update energy
+        # Update energy:
+        # total cost = step_energy_cost * (1 + action_cost)
+        #   where action_cost = sum-of-squares of action magnitudes.
+        # This gives a fixed idle penalty scaled by the same factor as
+        # the variable action cost, keeping both terms in the same units.
         energy_gain = ate_food.float() * self.energy_per_food
         self._energy = (
-            self._energy - energy_cost * self.step_energy_cost - self.step_energy_cost + energy_gain
+            self._energy - self.step_energy_cost * (1.0 + energy_cost) + energy_gain
         ).clamp(0.0, self.initial_energy)
 
         # Update hunger
