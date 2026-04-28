@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import inspect
 import typing
+from collections.abc import Iterator
 
 import pytest
 import torch
@@ -80,7 +81,7 @@ class _DummyBrain:
     def forward(self, obs: Obs, state: BrainState) -> tuple[Action, BrainState, AuxInfo]:
         return torch.zeros(1), {}, {}
 
-    def trainable_parameters(self):  # type: ignore[override]
+    def trainable_parameters(self) -> Iterator[torch.nn.Parameter]:
         return iter([])
 
 

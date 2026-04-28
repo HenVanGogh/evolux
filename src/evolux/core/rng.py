@@ -51,7 +51,15 @@ class RNG:
         return gen
 
     def numpy(self, name: str) -> np.random.Generator:
-        """Return a child numpy Generator deterministically derived from name."""
+        """Return a child numpy Generator deterministically derived from name.
+
+        Parameters
+        ----------
+        name:
+            Logical name for the sub-stream (e.g. ``"worldgen"``).  Different
+            names yield independent streams; same name always yields the same
+            sequence.
+        """
         return np.random.default_rng(self.seed ^ _hash_to_int(name))
 
     def child(self, name: str) -> RNG:
