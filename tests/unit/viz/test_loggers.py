@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -92,23 +93,9 @@ def test_jsonl_creates_parent_dirs(tmp_path: Path) -> None:
 # ── TensorboardLogger — fallback path ───────────────────────────────────────
 
 
-def _hide_module(name: str) -> None:
-    """Insert a sentinel in sys.modules so the import fails."""
-    sys.modules[name] = None  # type: ignore[assignment]
-
-
-def _restore_module(name: str, original: object) -> None:
-    if original is None:
-        sys.modules.pop(name, None)
-    else:
-        sys.modules[name] = original  # type: ignore[assignment]
-
-
 def test_tensorboard_fallback_no_crash(tmp_path: Path) -> None:
     """TensorboardLogger must not raise when tensorboard is absent."""
-    original = sys.modules.get("torch.utils.tensorboard")
-    _hide_module("torch.utils.tensorboard")
-    try:
+    with patch.dict(sys.modules, {"torch.utils.tensorboard": None}):
         logger = TensorboardLogger(tmp_path / "tb")
         logger.log_scalar("loss", 0.1, step=0)
         logger.log_dict({"a": 1.0}, step=0)
@@ -116,19 +103,13 @@ def test_tensorboard_fallback_no_crash(tmp_path: Path) -> None:
         logger.log_image("frame", torch.zeros(3, 8, 8), step=0)
         logger.close()
         logger.close()  # idempotent
-    finally:
-        _restore_module("torch.utils.tensorboard", original)
 
 
 def test_tensorboard_fallback_writes_jsonl(tmp_path: Path) -> None:
-    original = sys.modules.get("torch.utils.tensorboard")
-    _hide_module("torch.utils.tensorboard")
-    try:
+    with patch.dict(sys.modules, {"torch.utils.tensorboard": None}):
         logger = TensorboardLogger(tmp_path / "tb")
         logger.log_scalar("loss", 0.5, step=3)
         logger.close()
-    finally:
-        _restore_module("torch.utils.tensorboard", original)
 
     jsonl_path = tmp_path / "tb" / "events.jsonl"
     lines = jsonl_path.read_text().strip().splitlines()
@@ -141,9 +122,7 @@ def test_tensorboard_fallback_writes_jsonl(tmp_path: Path) -> None:
 
 def test_wandb_fallback_no_crash(tmp_path: Path) -> None:
     """WandbLogger must not raise when wandb is absent."""
-    original = sys.modules.get("wandb")
-    _hide_module("wandb")
-    try:
+    with patch.dict(sys.modules, {"wandb": None}):
         logger = WandbLogger(tmp_path / "wandb_fallback")
         logger.log_scalar("reward", 1.0, step=0)
         logger.log_dict({"a": 1.0}, step=0)
@@ -151,19 +130,13 @@ def test_wandb_fallback_no_crash(tmp_path: Path) -> None:
         logger.log_image("frame", torch.zeros(3, 8, 8), step=0)
         logger.close()
         logger.close()  # idempotent
-    finally:
-        _restore_module("wandb", original)
 
 
 def test_wandb_fallback_writes_jsonl(tmp_path: Path) -> None:
-    original = sys.modules.get("wandb")
-    _hide_module("wandb")
-    try:
+    with patch.dict(sys.modules, {"wandb": None}):
         logger = WandbLogger(tmp_path / "wandb_fallback")
         logger.log_scalar("reward", 2.5, step=7)
         logger.close()
-    finally:
-        _restore_module("wandb", original)
 
     jsonl_path = tmp_path / "wandb_fallback" / "events.jsonl"
     lines = jsonl_path.read_text().strip().splitlines()

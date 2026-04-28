@@ -70,7 +70,9 @@ class JsonlLogger:
             values: 1-D (or any shape) tensor of raw values.
             step: Global step counter.
         """
-        flat = values.detach().float().flatten()
+        flat = values.detach().flatten()
+        if not flat.is_floating_point():
+            flat = flat.float()
         self._write(
             {
                 "type": "hist",
