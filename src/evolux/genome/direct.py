@@ -89,7 +89,7 @@ class DirectGenome:
         )
 
     def serialize(self) -> bytes:
-        """Serialise to a raw float32 byte string (little-endian)."""
+        """Serialize to a raw float32 byte string (little-endian)."""
         arr: np.ndarray = self.params.detach().cpu().numpy().astype(np.float32)
         return arr.tobytes()
 

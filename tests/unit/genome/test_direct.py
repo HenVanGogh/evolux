@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from typing import Any, ClassVar
 
@@ -218,11 +219,19 @@ def test_crossover_child_uses_only_parent_values() -> None:
 # ── decode_brain smoke test ──────────────────────────────────────────────────
 
 
+def _factory_n_params(factory: _DummyBrainFactory) -> int:
+    """Return the total number of parameters in a _DummyBrainFactory."""
+    return sum(math.prod(shape) for shape in factory.parameter_shapes.values())
+
+
+# ── decode_brain smoke test ──────────────────────────────────────────────────
+
+
 def test_decode_brain_smoke() -> None:
     """decode_brain must return a Brain that passes forward on dummy obs."""
-    n = sum(int(torch.prod(torch.tensor(s))) for s in _DummyBrainFactory.parameter_shapes.values())
-    g = DirectGenome(torch.randn(n))
     factory = _DummyBrainFactory()
+    n = _factory_n_params(factory)
+    g = DirectGenome(torch.randn(n))
     brain = g.decode_brain(factory)  # type: ignore[arg-type]
 
     obs = {"obs": torch.randn(2, 4)}
@@ -234,8 +243,7 @@ def test_decode_brain_smoke() -> None:
 def test_decode_brain_weights_injected() -> None:
     """Weights extracted from the genome must reach the factory."""
     factory = _DummyBrainFactory()
-    # Total params for this factory
-    n = sum(int(torch.prod(torch.tensor(s))) for s in factory.parameter_shapes.values())
+    n = _factory_n_params(factory)
     params = torch.arange(n, dtype=torch.float32)
     g = DirectGenome(params)
     brain: _DummyBrain = g.decode_brain(factory)  # type: ignore[arg-type,assignment]
