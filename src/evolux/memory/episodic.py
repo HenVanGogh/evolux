@@ -1,26 +1,28 @@
-"""Episodic memory — DNC-style differentiable external memory.
+"""Episodic memory -- DNC-style differentiable external memory.
 
 State layout
 ------------
-M       : (B, N, D_val)  — external memory matrix (N slots, D_val-dim values)
-keys    : (B, N, D_key)  — key matrix used for content-based addressing
-usage   : (B, N)         — cumulative usage per slot (float, in [0, 1])
+M       : (B, N, D_val)  -- external memory matrix (N slots, D_val-dim values)
+keys    : (B, N, D_key)  -- key matrix used for content-based addressing
+usage   : (B, N)         -- cumulative usage per slot (float, in [0, 1])
 
 Write mechanism (from DNC, Graves et al. 2016)
 -----------------------------------------------
 1. Content addressing: cosine similarity between write key and each stored key
-   → write weight ``w`` (B, N), softmax.
-2. Allocation: least-used slot used to modulate write weight when memory is full.
-3. Soft erase + add:
-       M_new = M * (1 - w[..., None] * e[..., None])   # erase
-               + w[..., None] * a[..., None]            # add
-   where ``e`` is a learned erase vector (ones here → full overwrite).
-4. Usage update: usage += w * (1 - usage).
+   -> write weight ``c^w`` (B, N), softmax.
+2. Allocation weighting ``a_t`` (DNC eq.): concentrates on the least-used slot.
+   ``a[phi[j]] = (1 - u[phi[j]]) * prod_{i<j} u[phi[i]]``
+   where phi is the permutation that sorts usage ascending.
+3. Blend:  ``w = (1 - alloc_mix) * c^w + alloc_mix * a_t``
+4. Soft erase + add:
+       M_new = M * (1 - w[..., None])   # erase
+               + w[..., None] * value   # add
+5. Usage update: ``u_new = u + w * (1 - u)``.
 
 Read mechanism
 --------------
 Content-based: cosine similarity between read query and all stored keys
-→ read weight, soft-attended value.
+-> read weight, soft-attended value.
 """
 
 from __future__ import annotations
@@ -31,6 +33,48 @@ from torch import Tensor
 
 from evolux.core.types import MemoryState
 from evolux.memory import MEMORY_REGISTRY
+
+
+def _dnc_allocation_weighting(usage: Tensor) -> Tensor:
+    """DNC allocation weighting -- concentrates on the least-used slot.
+
+    Implements Graves et al. 2016, Section "Memory allocation":
+
+        a[phi[j]] = (1 - u[phi[j]]) * prod_{i < j} u[phi[i]]
+
+    where ``phi`` is the ascending-usage sort permutation.  When usage is
+    zero everywhere the entire weight goes to the first slot (j=0), because
+    the empty product equals 1 and all subsequent terms collapse to zero as
+    soon as the running product hits a zero-usage predecessor.
+
+    Parameters
+    ----------
+    usage:
+        ``(B, N)`` per-slot usage in ``[0, 1]``.
+
+    Returns
+    -------
+    ``(B, N)`` allocation weighting with values in ``[0, 1]``, sum ``<= 1``.
+    """
+    # Sort slots by usage ascending (least-used first).
+    sorted_usage, sort_idx = usage.sort(dim=-1)  # (B, N)
+
+    # Compute a_sorted[j] = (1 - u[phi[j]]) * prod_{i < j} u[phi[i]].
+    # The shifted cumprod provides the running product up to (but not
+    # including) position j: cumprod_shifted[0] = 1 (empty product),
+    # cumprod_shifted[j] = u[phi[0]] * ... * u[phi[j-1]].
+    cumprod = torch.cumprod(sorted_usage, dim=-1)  # (B, N)
+    B = usage.shape[0]
+    cumprod_shifted = torch.cat(
+        [torch.ones(B, 1, device=usage.device, dtype=usage.dtype), cumprod[:, :-1]],
+        dim=-1,
+    )  # (B, N)
+    a_sorted = (1.0 - sorted_usage) * cumprod_shifted  # (B, N)
+
+    # Unsort back to original slot order.
+    a = torch.zeros_like(a_sorted)
+    a.scatter_(1, sort_idx, a_sorted)
+    return a  # (B, N)
 
 
 @MEMORY_REGISTRY.register("episodic")
@@ -50,10 +94,11 @@ class EpisodicMemory:
     val_dim:
         Dimensionality of stored values (``D_val``).
     alloc_mix:
-        Interpolation coefficient between content-based write weight and
-        least-used-slot allocation weight (``0`` = pure content, ``1`` = pure
-        allocation).  The DNC paper calls this the *allocation gate*.
-        Default ``0.5``.
+        Interpolation between content-based write weight and the DNC
+        allocation weighting (``0`` = pure content, ``1`` = pure allocation).
+        The DNC paper calls this the *allocation gate* ``g_a``.
+        Default ``1.0`` (pure allocation: each write goes to the least-used
+        slot, leaving previously-written slots intact).
 
     Notes
     -----
@@ -62,9 +107,9 @@ class EpisodicMemory:
 
     State keys (from :meth:`init_state`)
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    ``M``     : ``(B, N, D_val)`` — value memory matrix
-    ``keys``  : ``(B, N, D_key)`` — key memory matrix
-    ``usage`` : ``(B, N)``        — per-slot usage in ``[0, 1]``
+    ``M``     : ``(B, N, D_val)`` -- value memory matrix
+    ``keys``  : ``(B, N, D_key)`` -- key memory matrix
+    ``usage`` : ``(B, N)``        -- per-slot usage in ``[0, 1]``
     """
 
     def __init__(
@@ -72,14 +117,14 @@ class EpisodicMemory:
         capacity: int,
         key_dim: int,
         val_dim: int,
-        alloc_mix: float = 0.5,
+        alloc_mix: float = 1.0,
     ) -> None:
         self.capacity: int = capacity
         self.key_dim: int = key_dim
         self.val_dim: int = val_dim
         self.alloc_mix: float = float(alloc_mix)
 
-    # ── Protocol methods ─────────────────────────────────────────────────────
+    # -- Protocol methods ---------------------------------------------------------
 
     def init_state(self, batch_size: int, device: torch.device) -> MemoryState:
         """Return zero-initialised state for *batch_size* independent environments.
@@ -87,9 +132,9 @@ class EpisodicMemory:
         Returns
         -------
         dict with:
-            ``M``     : ``(B, N, D_val)`` float32 zeros — value memory matrix
-            ``keys``  : ``(B, N, D_key)`` float32 zeros — key memory matrix
-            ``usage`` : ``(B, N)``        float32 zeros — per-slot usage
+            ``M``     : ``(B, N, D_val)`` float32 zeros -- value memory matrix
+            ``keys``  : ``(B, N, D_key)`` float32 zeros -- key memory matrix
+            ``usage`` : ``(B, N)``        float32 zeros -- per-slot usage
         """
         N = self.capacity
         return {
@@ -117,7 +162,8 @@ class EpisodicMemory:
         Algorithm
         ---------
         1. Content-based write weight via cosine similarity.
-        2. Allocation weight (least-used slot).
+        2. DNC allocation weight (Graves et al. 2016 Section "Memory
+           allocation") -- focuses on the least-used slot.
         3. Blend content + allocation using ``alloc_mix``.
         4. Soft erase + add update to memory matrix.
         5. Soft update to key matrix.
@@ -133,16 +179,15 @@ class EpisodicMemory:
         content_score = (q * k_norm).sum(-1)  # (B, N)
         w_content = F.softmax(content_score, dim=-1)  # (B, N)
 
-        # 2. Allocation weight: focus on the least-used slot.
-        # Sort slots by usage ascending; assign allocation weight to the
-        # least-used slot (soft approximation: inverse-usage softmax).
-        alloc_score = -usage  # (B, N)  — lower usage → higher score
-        w_alloc = F.softmax(alloc_score, dim=-1)  # (B, N)
+        # 2. DNC allocation weighting -- almost all weight on least-used slot.
+        w_alloc = _dnc_allocation_weighting(usage)  # (B, N), sum <= 1
+        # Normalise so blending with w_content (sum=1) is well-scaled.
+        w_alloc = w_alloc / (w_alloc.sum(dim=-1, keepdim=True) + 1e-8)  # (B, N)
 
         # 3. Blend content + allocation.
         w = (1.0 - self.alloc_mix) * w_content + self.alloc_mix * w_alloc  # (B, N)
 
-        # 4. Soft erase + add to value memory (erase vector = ones → full rewrite).
+        # 4. Soft erase + add to value memory (erase vector = ones -> full rewrite).
         #    M_new[b, n] = M[b, n] * (1 - w[b, n]) + w[b, n] * value[b]
         w3 = w.unsqueeze(-1)  # (B, N, 1)
         M_new = M * (1.0 - w3) + w3 * value.unsqueeze(1)  # (B, N, D_val)
