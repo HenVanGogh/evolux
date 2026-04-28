@@ -212,19 +212,23 @@ def test_checkpoint_restore_updates_step(assembled: AssembledRun, tmp_path: Path
 
 
 def test_checkpoint_restore_updates_population(assembled: AssembledRun, tmp_path: Path) -> None:
+    from evolux.genome.direct import DirectGenome
+
     EvolutionLoop(assembled).run(max_generations=1)
-    genomes_saved = [g.params.clone() for g in assembled.population.genomes]  # type: ignore[union-attr]
+    genomes_saved = [
+        g.params.clone() for g in assembled.population.genomes if isinstance(g, DirectGenome)
+    ]
 
     ckpt_path = tmp_path / "ckpt.pkl"
     checkpoint.save(assembled, ckpt_path)
 
     # Replace population with dummy genomes.
-    from evolux.genome.direct import DirectGenome
-
     assembled.population.genomes = [DirectGenome(torch.zeros(1)) for _ in range(4)]
 
     checkpoint.restore(assembled, ckpt_path)
-    genomes_restored = [g.params.clone() for g in assembled.population.genomes]  # type: ignore[union-attr]
+    genomes_restored = [
+        g.params.clone() for g in assembled.population.genomes if isinstance(g, DirectGenome)
+    ]
 
     for saved, restored in zip(genomes_saved, genomes_restored, strict=True):
         assert torch.allclose(saved, restored)
@@ -242,6 +246,8 @@ def test_checkpoint_bit_exact(smoke_cfg: EvoluxConfig, tmp_path: Path) -> None:
     regardless of the run instance, so the evolutionary trajectory after
     checkpoint restore must match the uninterrupted run exactly.
     """
+    from evolux.genome.direct import DirectGenome
+
     # ── run1: run gen 0, save, continue for gen 1 ────────────────────────────
     run1 = assemble_from_config(smoke_cfg, run_dir=tmp_path / "run1")
     loop1 = EvolutionLoop(run1)
@@ -251,7 +257,7 @@ def test_checkpoint_bit_exact(smoke_cfg: EvoluxConfig, tmp_path: Path) -> None:
     checkpoint.save(run1, ckpt_path)
 
     loop1.run(max_generations=1)  # gen 1 → step = 2
-    params_run1 = [g.params.clone() for g in run1.population.genomes]  # type: ignore[union-attr]
+    params_run1 = [g.params.clone() for g in run1.population.genomes if isinstance(g, DirectGenome)]
     run1.close()
 
     # ── run2: fresh assemble, restore checkpoint, run gen 1 ──────────────────
@@ -259,7 +265,7 @@ def test_checkpoint_bit_exact(smoke_cfg: EvoluxConfig, tmp_path: Path) -> None:
     checkpoint.restore(run2, ckpt_path)
     loop2 = EvolutionLoop(run2)
     loop2.run(max_generations=1)  # gen 1 → step = 2
-    params_run2 = [g.params.clone() for g in run2.population.genomes]  # type: ignore[union-attr]
+    params_run2 = [g.params.clone() for g in run2.population.genomes if isinstance(g, DirectGenome)]
     run2.close()
 
     for p1, p2 in zip(params_run1, params_run2, strict=True):

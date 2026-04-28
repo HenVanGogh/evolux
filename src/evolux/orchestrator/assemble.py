@@ -76,7 +76,7 @@ class _StubWorld:
         self._gen: torch.Generator = rng.split("stub_world_init")
         self._current_gen: int = 0
 
-    def _prepare_generation(self, gen: int) -> None:
+    def prepare_generation(self, gen: int) -> None:
         """Record the upcoming generation index for deterministic RNG seeding.
 
         Called by :class:`EvolutionLoop` before each ``reset()`` call so that

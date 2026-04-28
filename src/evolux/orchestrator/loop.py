@@ -118,8 +118,8 @@ class EvolutionLoop:
         device = run.device
 
         # Notify stub world (and any world that supports it) of the upcoming gen.
-        if hasattr(run.world, "_prepare_generation"):
-            run.world._prepare_generation(gen)
+        if hasattr(run.world, "prepare_generation"):
+            run.world.prepare_generation(gen)
         run.world.reset()
 
         # Initialise brain recurrent state for the whole batch.
