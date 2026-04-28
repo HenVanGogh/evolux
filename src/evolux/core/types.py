@@ -109,3 +109,31 @@ class Trajectory:
             length=_move(self.length),
             aux={k: _move(v) for k, v in self.aux.items()},
         )
+
+    @classmethod
+    def concat(cls, others: list[Trajectory]) -> Trajectory:
+        """Concatenate a list of trajectories along the time dimension.
+
+        All trajectories must share the same batch size and observation/aux
+        keys.  The resulting ``length`` is the element-wise sum of all input
+        lengths.
+
+        Parameters
+        ----------
+        others:
+            Non-empty list of :class:`Trajectory` instances to concatenate.
+        """
+        if not others:
+            raise ValueError("others must be a non-empty list")
+
+        obs_keys = others[0].obs.keys()
+        aux_keys = others[0].aux.keys()
+
+        return cls(
+            obs={k: torch.cat([t.obs[k] for t in others], dim=1) for k in obs_keys},
+            actions=torch.cat([t.actions for t in others], dim=1),
+            rewards=torch.cat([t.rewards for t in others], dim=1),
+            dones=torch.cat([t.dones for t in others], dim=1),
+            length=torch.stack([t.length for t in others], dim=0).sum(dim=0),
+            aux={k: torch.cat([t.aux[k] for t in others], dim=1) for k in aux_keys},
+        )

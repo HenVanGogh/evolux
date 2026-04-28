@@ -77,6 +77,15 @@ def load_config(
     If ``base`` is given, that file is loaded first and the main config is
     deep-merged on top. This supports the common pattern of an experiment
     config that overrides a default.
+
+    Notes
+    -----
+    Design rationale: ``docs/ARCHITECTURE.md`` §6 — *Configs are typed*.
+    Config loading uses pydantic with ``extra="forbid"`` so any unknown key
+    raises a ``ConfigError`` at process start rather than silently being
+    ignored until step 50,000.  The ``extends`` key enables a lightweight
+    inheritance chain (experiment overrides defaults) without duplicating
+    large YAML files.
     """
     p = Path(path)
     if not p.exists():
