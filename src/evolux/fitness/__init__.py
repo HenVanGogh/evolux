@@ -5,6 +5,7 @@ from __future__ import annotations
 from evolux.core.registry import Registry
 
 OBJECTIVE_REGISTRY: Registry = Registry("objective")
+AGGREGATOR_REGISTRY: Registry = Registry("aggregator")
 DESCRIPTOR_REGISTRY: Registry = Registry("behaviour_descriptor")
 
-__all__ = ["DESCRIPTOR_REGISTRY", "OBJECTIVE_REGISTRY"]
+__all__ = ["AGGREGATOR_REGISTRY", "DESCRIPTOR_REGISTRY", "OBJECTIVE_REGISTRY"]
