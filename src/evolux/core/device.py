@@ -28,7 +28,16 @@ def get_device(spec: str = "auto") -> torch.device:
 
 
 class DeviceManager:
-    """Holds the single global device + amp configuration for a run."""
+    """Holds the single global device + amp configuration for a run.
+
+    Notes
+    -----
+    Design rationale: ``docs/ARCHITECTURE.md`` §1 — *Batched-tensor everywhere*.
+    A single ``DeviceManager`` is instantiated at startup and threaded through
+    every hot-path component so all tensors live on the same device.  This avoids
+    accidental cross-device copies, which are silent performance killers.  AMP is
+    only enabled for CUDA devices; on CPU it is always disabled.
+    """
 
     def __init__(self, device_spec: str = "auto", amp: bool = False) -> None:
         self.device: torch.device = get_device(device_spec)
