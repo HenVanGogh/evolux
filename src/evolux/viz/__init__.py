@@ -2,4 +2,6 @@
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from evolux.viz.loggers import JsonlLogger, TensorboardLogger, WandbLogger
+
+__all__ = ["JsonlLogger", "TensorboardLogger", "WandbLogger"]
