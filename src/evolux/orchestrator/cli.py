@@ -20,8 +20,20 @@ def validate(config: Path = typer.Argument(..., exists=True, dir_okay=False)) ->
 
 @app.command()
 def run(config: Path = typer.Argument(..., exists=True, dir_okay=False)) -> None:
-    """Run an experiment from a YAML config (not yet implemented)."""
-    raise NotImplementedError("orchestrator.run is scheduled for Phase 1 — see docs/ROADMAP.md")
+    """Run an experiment from a YAML config."""
+    from evolux.core.config import load_config
+    from evolux.orchestrator.assemble import assemble_from_config
+    from evolux.orchestrator.loop import EvolutionLoop
+
+    cfg = load_config(config)
+    assembled = assemble_from_config(cfg)
+    typer.echo(f"run_dir={assembled.run_dir}")
+
+    loop = EvolutionLoop(assembled)
+    loop.run()
+    assembled.logger.close()
+
+    typer.echo(f"Done. run_dir={assembled.run_dir}")
 
 
 @app.command()
